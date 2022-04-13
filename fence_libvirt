@@ -1,0 +1,60 @@
+#!/bin/sh
+
+ID_FILE=~vdsm/.ssh/id_ed25519
+DST_HOST=root@hypervisor
+
+RC_POWERED_OFF=2
+RC_ERROR=1				 # error message to stdout
+RC_SUCCESS=0
+
+while read line; do
+   logger -- P: $$ L: $line
+
+   case $line in
+	  *ipaddr=* )
+		 IPADDR=$(echo $line | cut -d = -f 2)
+	  ;;
+	  *action=* )
+		 ACTION=$(echo $line | cut -d = -f 2)
+	  ;;
+   esac
+done
+
+case $ACTION in
+
+	validate-all )
+	   exit $RC_SUCCESS
+
+	   ;;
+
+	off )
+	   exec ssh -i $ID_FILE $DST_HOST "virsh list --state-running | grep -q $IPADDR && virsh destroy $IPADDR || true"
+	   ;;
+
+	on )
+	   exec ssh -i $ID_FILE $DST_HOST "virsh start $IPADDR"
+	   ;;
+
+	reboot )
+	   exec ssh -i $ID_FILE $DST_HOST "virsh reset $IPADDR"
+	   ;;
+
+	status )
+	   STATE=$(ssh -i $ID_FILE $DST_HOST "virsh dominfo $IPADDR" | grep State | awk -F : '{ print $2 }' | sed 's/^ *//')
+
+	   echo $STATE
+
+	   [ "$STATE" = "running" ] && exit $RC_SUCCESS
+	   [ "$STATE" = "shut off" ] && exit $RC_POWERED_OFF
+
+	   ;;
+	* )
+	   echo unknown action: $ACTION
+
+	   exit $RC_ERROR
+	   ;;
+ esac
+
+
+exit $RC_ERROR
+
